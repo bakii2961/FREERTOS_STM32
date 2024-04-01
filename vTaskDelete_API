@@ -1,0 +1,125 @@
+#include "stm32f4xx.h"
+#include "stm32f4_discovery.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "stdio.h"
+
+
+
+TaskHandle_t gorev1_handler = NULL;
+TaskHandle_t gorev2_handler = NULL;
+
+
+void read_button_State_task();
+
+void setup_config(void);
+void gpio_input_config(void);
+void gpio_output_config(void);
+
+
+void task1_handler(void *params);
+void task2_handler(void *params);
+void delay_freertos(uint32_t delayMS);
+int main(void)
+{
+
+	RCC_DeInit();
+
+	SystemCoreClockUpdate();
+	setup_config();
+
+	xTaskCreate(task1_handler,"Görev_1",130,NULL,3,&gorev1_handler);
+	xTaskCreate(task2_handler,"Görev_2",130,NULL,4,&gorev2_handler);
+
+
+	vTaskStartScheduler();
+  while (1)
+  {
+
+  }
+}
+
+void task1_handler(void *params){
+
+	while(1){
+
+		GPIO_ToggleBits(GPIOD,GPIO_Pin_12 |GPIO_Pin_13);
+		delay_freertos(1000);
+
+
+
+
+	}
+}
+
+
+void task2_handler(void *params){
+
+	while(1){
+		GPIO_ToggleBits(GPIOD ,GPIO_Pin_14 |GPIO_Pin_15);
+		delay_freertos(500);
+
+		if(GPIO_ReadInputDataBit(GPIOA,GPIO_PinSource0));
+		{
+
+			vTaskDelete(gorev2_handler);
+		}
+	}
+
+}
+
+void setup_config(void){
+
+	gpio_input_config();
+	gpio_output_config();
+}
+void gpio_input_config(void){
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA,ENABLE);
+
+	GPIO_InitTypeDef GPIO_Initstrcture= {0} ;
+	GPIO_Initstrcture.GPIO_Mode=GPIO_Mode_IN;
+	GPIO_Initstrcture.GPIO_Pin =GPIO_Pin_0;
+	GPIO_Initstrcture.GPIO_OType= GPIO_OType_PP;
+	GPIO_Initstrcture.GPIO_PuPd = GPIO_PuPd_NOPULL;
+	GPIO_Initstrcture.GPIO_Speed=GPIO_Speed_100MHz;
+	GPIO_Init(GPIOA,&GPIO_Initstrcture);
+}
+
+
+
+void gpio_output_config(void){
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG,ENABLE);
+	GPIO_InitTypeDef GPIO_Initstrcture= {0} ;
+
+	//NVIC_InitTypeDef
+	GPIO_Initstrcture.GPIO_Mode=GPIO_Mode_OUT;
+	GPIO_Initstrcture.GPIO_Pin =GPIO_Pin_12 |GPIO_Pin_13|GPIO_Pin_14|GPIO_Pin_15 ;
+	GPIO_Initstrcture.GPIO_OType= GPIO_OType_PP;
+	GPIO_Initstrcture.GPIO_PuPd = GPIO_PuPd_NOPULL;
+	GPIO_Initstrcture.GPIO_Speed=GPIO_Speed_100MHz;
+	GPIO_Init(GPIOD,&GPIO_Initstrcture);
+
+
+}
+void delay_freertos(uint32_t delayMS)
+{
+
+	uint32_t anlik_tick=xTaskGetTickCount();  // þu anki tick deðeri
+	uint32_t delayTick = pdMS_TO_TICKS(delayMS);// ms cinsinden girdiðim deðerin karþýlýðý
+
+	while(xTaskGetTickCount()< (anlik_tick+delayTick));
+
+}
+
+
+void EVAL_AUDIO_TransferComplete_CallBack(uint32_t pBuffer, uint32_t Size){
+
+  return;
+}
+
+
+uint16_t EVAL_AUDIO_GetSampleCallBack(void){
+
+  return -1;
+}
