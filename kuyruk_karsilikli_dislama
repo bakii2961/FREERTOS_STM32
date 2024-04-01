@@ -1,0 +1,204 @@
+
+#include "stm32f4xx.h"
+#include "stm32f4_discovery.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "stdio.h"
+#include "string.h"
+#include "semphr.h"
+#include "stdlib.h"
+#include "queue.h"
+
+
+TaskHandle_t my_queue_task = NULL;
+TaskHandle_t my_led_task1 = NULL;
+TaskHandle_t my_led_task2 = NULL;
+
+
+QueueHandle_t kuyruk =NULL;
+QueueHandle_t kuyruk2 =NULL;
+
+
+SemaphoreHandle_t xsemaphorekey;
+
+int button_state=0;
+uint8_t count = 0 ;
+
+
+void my_queue_task1(void *params);
+void led_task_1(void *params);
+void led_task_2(void *params);
+
+char mymessage[200];
+void setup(void);
+void gpio_config();
+void printMessage(char *message);
+void EXTI0_IRQHandler(void);
+void Button_Handler(void);
+
+void EXTI0_IRQHandler(void){
+	EXTI_ClearITPendingBit(EXTI_Line0);
+
+	if(GPIO_ReadInputDataBit(GPIOA,GPIO_Pin_0)==Bit_SET)
+	{
+		Button_Handler();
+		}
+	}
+
+
+int main(void)
+
+{
+
+	RCC_DeInit();
+
+	SystemCoreClockUpdate();
+	setup();
+	kuyruk = xQueueCreate(5,sizeof(int));
+	kuyruk2 = xQueueCreate(5,sizeof(int));
+	vSemaphoreCreateBinary(xsemaphorekey);
+	if(kuyruk!=NULL && kuyruk2!=NULL){
+		GPIO_SetBits(GPIOD,GPIO_Pin_12 |GPIO_Pin_13);
+		xTaskCreate(my_queue_task1,"read_button_State_task",750,NULL,3,&my_queue_task);
+		xTaskCreate(led_task_1,"LED1_task",750,NULL,2,&my_led_task1);
+		xTaskCreate(led_task_2,"LED2_task",750,NULL,3,&my_led_task2);
+
+	}
+	else{
+		GPIO_ResetBits(GPIOD,GPIO_Pin_12 |GPIO_Pin_13);
+
+	}
+
+
+
+	vTaskStartScheduler();
+
+
+
+  while (1)
+  {
+  }
+}
+
+void my_queue_task1(void *params){
+
+
+	while(1){
+			if(button_state==1){
+				xQueueSend(kuyruk, &count, portMAX_DELAY);
+			}
+			if(button_state==2){
+
+				xQueueSend(kuyruk2, &count, portMAX_DELAY);
+			}
+			taskYIELD();
+	}
+
+}
+
+void led_task_1(void *params){
+	uint32_t TickDelay = pdMS_TO_TICKS(3000);
+
+	int veri=0;
+
+while(1){
+	xSemaphoreTake(xsemaphorekey,portMAX_DELAY);
+	if (xQueueReceive(kuyruk, &veri, portMAX_DELAY) != pdTRUE)
+	{
+		GPIO_ResetBits(GPIOD,GPIO_Pin_12 |GPIO_Pin_13| GPIO_Pin_14|GPIO_Pin_15);
+	}
+	else
+	{
+		GPIO_SetBits(GPIOD,GPIO_Pin_12 |GPIO_Pin_13| GPIO_Pin_14);
+	}
+
+}
+}
+
+void led_task_2(void *params){
+	uint32_t TickDelay = pdMS_TO_TICKS(3000);
+
+	int verii=0;
+	while(1){
+		xSemaphoreTake(xsemaphorekey,portMAX_DELAY);
+
+		if (xQueueReceive(kuyruk2, &verii, portMAX_DELAY) != pdTRUE)
+		{
+			GPIO_ResetBits(GPIOD,GPIO_Pin_12 |GPIO_Pin_13| GPIO_Pin_14|GPIO_Pin_15);
+		}
+		else
+		{
+			GPIO_SetBits(GPIOD,GPIO_Pin_12 |GPIO_Pin_13| GPIO_Pin_14|GPIO_Pin_15);
+		}
+
+		taskYIELD();
+
+	}
+}
+
+void Button_Handler(void){
+	count=count+1;
+	if (count==5){
+	count=0;
+	}
+button_state=count;
+}
+
+void setup(void){
+
+	gpio_config();
+	exti_interrupt();
+
+}
+
+
+
+void gpio_config(){
+
+	GPIO_InitTypeDef GPIO_Initstrcture= {0} ;
+
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA,ENABLE);
+	GPIO_Initstrcture.GPIO_Mode=GPIO_Mode_IN;
+	GPIO_Initstrcture.GPIO_Pin =GPIO_Pin_0 ;
+	GPIO_Initstrcture.GPIO_OType= GPIO_OType_PP;
+	GPIO_Initstrcture.GPIO_PuPd = GPIO_PuPd_NOPULL;
+	GPIO_Initstrcture.GPIO_Speed=GPIO_Speed_100MHz;
+	SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource0); // exti pin0 tanýmladýk
+
+	GPIO_Init(GPIOA,&GPIO_Initstrcture);
+
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD,ENABLE);
+	GPIO_Initstrcture.GPIO_Mode=GPIO_Mode_OUT;
+	GPIO_Initstrcture.GPIO_Pin =GPIO_Pin_12 |GPIO_Pin_13|GPIO_Pin_14|GPIO_Pin_15;
+	GPIO_Initstrcture.GPIO_OType= GPIO_OType_PP;
+	GPIO_Initstrcture.GPIO_PuPd = GPIO_PuPd_NOPULL;
+	GPIO_Initstrcture.GPIO_Speed=GPIO_Speed_100MHz;
+	GPIO_Init(GPIOD,&GPIO_Initstrcture);
+
+
+}
+
+void exti_interrupt(void){
+
+RCC_APB2PeriphClockCmd(  RCC_APB2Periph_SYSCFG,ENABLE);
+EXTI_InitTypeDef exti_init_structure ={0};
+exti_init_structure.EXTI_Line=EXTI_Line0;// o. pin ile ilgili olduðu için 0 seçtik
+exti_init_structure.EXTI_LineCmd=ENABLE;
+exti_init_structure.EXTI_Mode=EXTI_Mode_Interrupt;
+exti_init_structure.EXTI_Trigger=EXTI_Trigger_Rising;
+
+EXTI_Init(&exti_init_structure);
+NVIC_SetPriority(EXTI0_IRQn,2);//öncelik deðeri verdik
+NVIC_EnableIRQ(EXTI0_IRQn);
+
+}
+void EVAL_AUDIO_TransferComplete_CallBack(uint32_t pBuffer, uint32_t Size){
+
+  return;
+}
+
+
+uint16_t EVAL_AUDIO_GetSampleCallBack(void){
+
+  return -1;
+}
