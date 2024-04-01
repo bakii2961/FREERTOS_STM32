@@ -1,0 +1,182 @@
+
+#include "stm32f4xx.h"
+#include "stm32f4_discovery.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "stdio.h"
+#include "string.h"
+#include "semphr.h"
+#include "stdlib.h"
+#include "queue.h"
+
+
+
+void Handler_Task_Handler(void *parameters);
+void Periodic_Task_Handler(void *parameters);
+
+
+
+xSemaphoreHandle xCounting=NULL;
+
+
+char mymessage[200];
+void setup(void);
+void gpio_config();
+void printMessage(char *message);
+void USART_CONFIG();
+void SoftwareInterrupt();
+int main(void)
+
+{
+
+	RCC_DeInit();
+	setup();
+	SystemCoreClockUpdate();
+	sprintf(mymessage,"demo of Counting semaphore usage between two task \r\n");
+	printMessage(mymessage);
+
+
+
+	xCounting =  xSemaphoreCreateCounting(10,0); // 10 adet anahtar tanýmlardýk , 0 verdik 0 ile baþlatýyoruz
+	if((xCounting!=NULL) ){
+		sprintf(mymessage,"semaphore and Interrupt and task created \r\n ");
+		printMessage(mymessage);
+		SoftwareInterrupt();
+		xTaskCreate(Handler_Task_Handler,"Handler_Task",500,NULL,1,NULL);
+		xTaskCreate(Periodic_Task_Handler,"Periodic_Task",500,NULL,3,NULL);
+		vTaskStartScheduler();
+	}
+	else {
+		sprintf(mymessage,"task are  not created \r\n ");
+		printMessage(mymessage);
+
+
+	}
+  while (1)
+  {
+  }
+}
+
+void Handler_Task_Handler(void *parameters){
+
+	while(1){
+
+		xSemaphoreTake(xCounting,portMAX_DELAY);
+		sprintf(mymessage,"handler task : olaylari ,isliyorum  \r\n ");
+		printMessage(mymessage);
+
+	}
+
+
+}
+
+
+void Periodic_Task_Handler(void *parameters){
+
+	while(1){
+		sprintf(mymessage,"periodic task: pending to interrupt \r\n ");
+		printMessage(mymessage);
+
+		NVIC_SetPendingIRQ(EXTI15_10_IRQn);
+
+		sprintf(mymessage,"periodic task: Im resumming \r\n ");
+		printMessage(mymessage);
+
+		vTaskDelay(pdMS_TO_TICKS(500));
+
+
+
+}
+}
+
+
+
+void printMessage(char *message){
+
+
+ for( int i =0;i<strlen(message);i++){
+	 while(USART_GetFlagStatus(USART2,USART_FLAG_TXE) !=SET);
+	 USART_SendData(USART2,message[i]);
+ }
+}
+
+void SoftwareInterrupt(){ // yazýlýmsal kesme kullanýcaðýz
+
+	NVIC_SetPriority(EXTI15_10_IRQn,configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY);
+	NVIC_EnableIRQ(EXTI15_10_IRQn); // kesme  hattýný  aktif ettim
+
+
+}
+
+void EXTI15_10_IRQHandler(void){
+
+
+    portBASE_TYPE xhigerpriortytasktoken = pdFALSE;
+	sprintf(mymessage,"interrupt is active \r\n ");
+	printMessage(mymessage);
+
+	xSemaphoreGiveFromISR(xCounting,&xhigerpriortytasktoken);
+	xSemaphoreGiveFromISR(xCounting,&xhigerpriortytasktoken);
+	xSemaphoreGiveFromISR(xCounting,&xhigerpriortytasktoken); // 5 defa anahtar verik
+	xSemaphoreGiveFromISR(xCounting,&xhigerpriortytasktoken);
+	xSemaphoreGiveFromISR(xCounting,&xhigerpriortytasktoken);
+
+	portEND_SWITCHING_ISR(&xhigerpriortytasktoken);
+}
+
+void setup(void){
+
+	gpio_config();
+	USART_CONFIG();
+
+}
+
+
+void USART_CONFIG(){
+ RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2,ENABLE);
+ USART_InitTypeDef usart_structure ;
+ memset(&usart_structure,0,sizeof(usart_structure));
+ usart_structure.USART_BaudRate=115200;
+ usart_structure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+ usart_structure.USART_Mode= USART_Mode_Tx|USART_Mode_Rx ;
+ usart_structure.USART_Parity = USART_Parity_No;
+ usart_structure.USART_StopBits= USART_StopBits_1 ;
+ usart_structure.USART_WordLength=USART_WordLength_8b ;
+
+ USART_Init(USART2,&usart_structure);
+
+ USART_Cmd(USART2,ENABLE);
+
+
+}
+void gpio_config(){
+
+	GPIO_InitTypeDef GPIO_Initstrcture= {0} ;
+
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA,ENABLE);
+
+
+
+
+	GPIO_Initstrcture.GPIO_Mode=GPIO_Mode_AF;
+	GPIO_Initstrcture.GPIO_Pin =GPIO_Pin_2|GPIO_Pin_3 ;
+	GPIO_Initstrcture.GPIO_OType= GPIO_OType_PP;
+	GPIO_Initstrcture.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_Initstrcture.GPIO_Speed=GPIO_Speed_50MHz;
+
+	GPIO_PinAFConfig(GPIOA,GPIO_PinSource2,GPIO_AF_USART2);
+	GPIO_PinAFConfig(GPIOA,GPIO_PinSource3,GPIO_AF_USART2);
+
+	GPIO_Init(GPIOA,&GPIO_Initstrcture);
+}
+
+void EVAL_AUDIO_TransferComplete_CallBack(uint32_t pBuffer, uint32_t Size){
+
+  return;
+}
+
+
+uint16_t EVAL_AUDIO_GetSampleCallBack(void){
+
+  return -1;
+}
