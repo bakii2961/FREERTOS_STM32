@@ -1,0 +1,194 @@
+
+#include "stm32f4xx.h"
+#include "stm32f4_discovery.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "stdio.h"
+#include "string.h"
+#include "semphr.h"
+#include "stdlib.h"
+#include "queue.h"
+
+
+
+void Master_Task_Handler(void *parameters);
+void Slave_Task_Handler(void *parameters);
+
+
+xQueueHandle xQueue= NULL;
+
+
+xSemaphoreHandle xSemaphore=NULL;
+
+
+char mymessage[200];
+void setup(void);
+void gpio_config();
+void printMessage(char *message);
+void USART_CONFIG();
+void SlaveDoWork();
+int main(void)
+
+{
+
+	RCC_DeInit();
+	setup();
+	SystemCoreClockUpdate();
+	sprintf(mymessage,"demo of binary semaphore usage between two task \r\n");
+	printMessage(mymessage);
+
+	xQueue= xQueueCreate(1,sizeof(unsigned int));
+
+	vSemaphoreCreateBinary(xSemaphore);
+	if((xQueue!=NULL)&& (xSemaphore!=NULL) ){
+		sprintf(mymessage,"semaphore and queue are created \r\n ");
+		printMessage(mymessage);
+
+		xTaskCreate(Master_Task_Handler,"Master_Task",500,NULL,3,NULL);
+		xTaskCreate(Slave_Task_Handler,"Slave_Task",500,NULL,1,NULL);
+		vTaskStartScheduler();
+	}
+	else {
+		sprintf(mymessage,"semaphore and queue are  not created \r\n ");
+		printMessage(mymessage);
+
+
+	}
+  while (1)
+  {
+  }
+}
+
+void Master_Task_Handler(void *parameters){
+	unsigned int xMassterPassId;
+	portBASE_TYPE xStatus;
+
+	xSemaphoreGive(xSemaphore); // sistemi baþlatýrken semaphore ýde sini 1 yaptýk bu gerekli bir olaydýr
+	sprintf(mymessage,"quraaaaaaaaaaaaaaa \r\n ");
+	printMessage(mymessage);
+
+	while(1){
+
+		xMassterPassId = (rand()& 0x1FF);
+		xStatus = xQueueSend(xQueue,&xMassterPassId,portMAX_DELAY);// kuyruða veri yazdýk ayný zamanda xStatus yazdýk yazdýysak true olmasý lazým
+
+		if(xStatus!= pdPASS){
+			sprintf(mymessage,"could not send to the queue  \r\n ");
+			printMessage(mymessage);
+
+		}
+		else {
+
+			xSemaphoreGive(xSemaphore); // burda dedikki eðer kuyruða veri yazýldýysa semaphore gönder ve manuel baðlam deðiþtirme çalýþtýr
+			taskYIELD();
+
+		}
+
+	}
+
+
+}
+
+void SlaveDoWork(unsigned int Passid){
+
+	sprintf(mymessage,"slave task working and id: \r\n",Passid);
+	printMessage(mymessage);
+	vTaskDelay(100);
+}
+
+void Slave_Task_Handler(void *parameters){
+	unsigned int xSlavePassId;
+	portBASE_TYPE xStatus;
+	sprintf(mymessage,"quraaaaaaaaa22222222222 \r\n ");
+	printMessage(mymessage);
+
+	while(1){
+
+		xSemaphoreTake(xSemaphore,0); // bununla semaphore aldýk  blok süreside 0 yazdýk
+		xStatus= xQueueReceive(xQueue,&xSlavePassId,0); //bizburda semaphore 0  ise kuyrukan veri aldýk ve bunu da xSlavePassId ye yazdýk
+
+		if(xStatus!= pdPASS){
+				sprintf(mymessage,"slave task queue is empty nothing to do   \r\n ");
+				printMessage(mymessage);
+
+		}
+		else{
+			//SlaveDoWork(xSlavePassId);//eðer kuyruktan veri geldiyse bizim yazdýðýmýz fonksyonda veriyi gönder
+			sprintf(mymessage,"data : %d \r\n",xSlavePassId);
+			printMessage(mymessage);
+
+
+		}
+
+
+}
+}
+
+void printMessage(char *message){
+
+
+	printf("hello world.\n");
+ for( int i =0;i<strlen(message);i++){
+	 while(USART_GetFlagStatus(USART2,USART_FLAG_TXE) !=SET);
+	 USART_SendData(USART2,message[i]);
+ }
+}
+
+
+
+void setup(void){
+
+	gpio_config();
+	USART_CONFIG();
+
+}
+
+
+void USART_CONFIG(){
+ RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2,ENABLE);
+ USART_InitTypeDef usart_structure ;
+ memset(&usart_structure,0,sizeof(usart_structure));
+ usart_structure.USART_BaudRate=115200;
+ usart_structure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+ usart_structure.USART_Mode= USART_Mode_Tx|USART_Mode_Rx ;
+ usart_structure.USART_Parity = USART_Parity_No;
+ usart_structure.USART_StopBits= USART_StopBits_1 ;
+ usart_structure.USART_WordLength=USART_WordLength_8b ;
+
+ USART_Init(USART2,&usart_structure);
+
+ USART_Cmd(USART2,ENABLE);
+
+
+}
+void gpio_config(){
+
+	GPIO_InitTypeDef GPIO_Initstrcture= {0} ;
+
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA,ENABLE);
+
+
+
+
+	GPIO_Initstrcture.GPIO_Mode=GPIO_Mode_AF;
+	GPIO_Initstrcture.GPIO_Pin =GPIO_Pin_2|GPIO_Pin_3 ;
+	GPIO_Initstrcture.GPIO_OType= GPIO_OType_PP;
+	GPIO_Initstrcture.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_Initstrcture.GPIO_Speed=GPIO_Speed_50MHz;
+
+	GPIO_PinAFConfig(GPIOA,GPIO_PinSource2,GPIO_AF_USART2);
+	GPIO_PinAFConfig(GPIOA,GPIO_PinSource3,GPIO_AF_USART2);
+
+	GPIO_Init(GPIOA,&GPIO_Initstrcture);
+}
+
+void EVAL_AUDIO_TransferComplete_CallBack(uint32_t pBuffer, uint32_t Size){
+
+  return;
+}
+
+
+uint16_t EVAL_AUDIO_GetSampleCallBack(void){
+
+  return -1;
+}
